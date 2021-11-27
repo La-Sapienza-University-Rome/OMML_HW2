@@ -3,7 +3,38 @@ from cvxopt import matrix, solvers
 from scipy.spatial.distance import pdist, squareform, cdist
 
 
+def rbf(x1, x2, gamma):
+    """
+    Compute the RBF function
+
+    :param x1: observations
+    :param x2: centers of the RBF function
+    :param gamma: strictly positive
+
+    :return rbf(x1)
+    """
+    minus_matrix = x1 - np.expand_dims(x2, axis=1)
+    return np.exp(-gamma * (np.linalg.norm(minus_matrix, ord=2, axis=2)**2) ).T
+
+
+def polynomial(x1, x2, gamma):
+    """
+    Compute the polynomial function
+
+    :param x1: observations
+    :param x2: support vectors
+    :param gamma: strictly positive
+
+    :return polynomial(x1)
+    """
+    return (1 + np.dot(x1, x2.T)) ** gamma
+
+
 class SVM():
+    # class attribute
+    kernel_functions = {'poly':polynomial, # convenient alias which matches the Sklearn API
+                        'polynomial':polynomial,
+                        'rbf':rbf}
 
     def __init__(self, X, y, C, gamma, kernel):
 
@@ -12,20 +43,22 @@ class SVM():
         self.C = C
         self.gamma = gamma
         self.kernel = kernel
+        # dynamically set the kernel function 
+        try:
+            self._kernel_fun = self.kernel_functions[self.kernel]
+        except:
+            raise NotImplementedError
         self._generate_intermediate_variables()
 
-    @staticmethod
-    def _kernel_fun(x1, x2, kernel, gamma):
+    @property
+    def state(self):
         """
-        Kernel function
+        Get the state of the SVM object
         """
-        if kernel == 'polynomial':
-            return (1 + np.dot(x1, x2.T)) ** gamma
-        elif kernel == 'rbf':
-            minus_matrix = x1 - np.expand_dims(x2, axis=1)
-            return np.exp(-gamma * (np.linalg.norm(minus_matrix, ord=2, axis=2)**2) ).T
-        else:
-            raise Exception('Kernel function does not exist')
+        state_dict = {'kernel':self.kernel,
+                      'gamma':self.gamma,
+                      'C':self.C}
+        return state_dict
 
     def _generate_intermediate_variables(self):
         """
@@ -47,7 +80,7 @@ class SVM():
         """
 
         obs = len(self.X)
-        self.K = self._kernel_fun(self.X, self.X, self.kernel, self.gamma)
+        self.K = self._kernel_fun(self.X, self.X, self.gamma)
 
         self.P = matrix(np.outer(self.y, self.y) * self.K)
         self.q = matrix(np.ones(obs) * -1)
@@ -96,7 +129,7 @@ class SVM():
 
         """
         y_pred = []
-        K_test = self._kernel_fun(X, self.X[self.sv_idx], self.kernel, self.gamma) # self.X[self.sv_idx] are the support vectors 
+        K_test = self._kernel_fun(X, self.X[self.sv_idx], self.gamma) # self.X[self.sv_idx] are the support vectors 
         prediction = np.sum(self.y[self.sv_idx] * self.alpha[self.sv_idx] * K_test,
                             axis=1)
         y_pred = np.sign(prediction)
