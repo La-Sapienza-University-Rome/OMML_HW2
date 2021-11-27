@@ -1,6 +1,5 @@
 import numpy as np
 from cvxopt import matrix, solvers
-from scipy.spatial.distance import pdist, squareform, cdist
 
 
 def rbf(x1, x2, gamma):
@@ -14,7 +13,7 @@ def rbf(x1, x2, gamma):
     :return rbf(x1)
     """
     minus_matrix = x1 - np.expand_dims(x2, axis=1)
-    return np.exp(-gamma * (np.linalg.norm(minus_matrix, ord=2, axis=2)**2) ).T
+    return np.exp(-gamma * (np.linalg.norm(minus_matrix, ord=2, axis=2)**2)).T
 
 
 def polynomial(x1, x2, gamma):
@@ -128,7 +127,6 @@ class SVM():
         Perform prediction and if y is available return prediction metrics
 
         """
-        y_pred = []
         K_test = self._kernel_fun(X, self.X[self.sv_idx], self.gamma) # self.X[self.sv_idx] are the support vectors 
         prediction = np.sum(self.y[self.sv_idx] * self.alpha[self.sv_idx] * K_test,
                             axis=1) + self.bias
@@ -141,3 +139,11 @@ class SVM():
         """
         y_pred = self.pred(X)
         return np.sum(y_pred == y) / len(y)
+
+
+class MultiSVM(SVM):
+    """
+    We will chose the one-vs-one since we have very few classes and in this manner we avoid the unbalance of one-vs-all
+    Make a nice implemenation for this part, but no sure how to do it really...The code that runs is present in the notebook
+    """
+
