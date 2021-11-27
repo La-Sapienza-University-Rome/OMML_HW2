@@ -14,9 +14,6 @@ class SVM():
         self.kernel = kernel
         self._generate_intermediate_variables()
 
-    def _gaussian_kernel(self, x, y, gamma=0.5):
-        return np.exp(-gamma * np.linalg.norm(x - y) ** 2)
-
     @staticmethod
     def _kernel_fun(x1, x2, kernel, gamma):
         """
@@ -25,11 +22,8 @@ class SVM():
         if kernel == 'polynomial':
             return (1 + np.dot(x1, x2.T)) ** gamma
         elif kernel == 'rbf':
-            minus_matrix = []
-            for i in range(len(x2)):
-                minus_matrix.append(x1 - x2[i])
-            minus_matrix = np.array(minus_matrix)
-            return np.exp(- gamma*(np.linalg.norm(minus_matrix, ord=2, axis=2)) ** 2)
+            minus_matrix = x1 - np.expand_dims(x2, axis=1)
+            return np.exp(-gamma * (np.linalg.norm(minus_matrix, ord=2, axis=2)**2) ).T
         else:
             raise Exception('Kernel function does not exist')
 
@@ -87,34 +81,30 @@ class SVM():
 
         self.bias = 0
         if not fix_intercept:
-            for i in range(sum(self.sv_idx)):
+            for i in range(np.sum(self.sv_idx)):
                 self.bias += self.y[self.sv_idx][i] - np.sum(
                     self.y[self.sv_idx] * alphas[self.sv_idx] * self.K[self.idx[i], self.sv_idx])
 
-            self.bias = self.bias / sum(self.sv_idx)
+            self.bias = self.bias / np.sum(self.sv_idx)
 
         return self.w, self.bias
 
     # TODO: Improve this part a lot...
-    def pred(self, X, y=None):
+    def pred(self, X):
         """
         Perform prediction and if y is available return prediction metrics
 
         """
         y_pred = []
-        K_test = np.zeros((len(X), sum(self.sv_idx)))
-        for i, xtest in enumerate(X):
-            for j, xtrain in enumerate(self.X[self.sv_idx]):
-                if self.kernel == 'rbf':
-                    K_test[i, j] = self._gaussian_kernel(xtest, xtrain, self.gamma)
-                else:
-                    K_test[i, j] = self._kernel_fun(xtest, xtrain, self.kernel, self.gamma)
+        K_test = self._kernel_fun(X, self.X[self.sv_idx], self.kernel, self.gamma) # self.X[self.sv_idx] are the support vectors 
+        prediction = np.sum(self.y[self.sv_idx] * self.alpha[self.sv_idx] * K_test,
+                            axis=1)
+        y_pred = np.sign(prediction)
+        return y_pred
 
-        for i in range(len(X)):
-            prediction = np.sum(self.y[self.sv_idx] * self.alpha[self.sv_idx] * K_test[i])
-            y_pred.append(np.sign(prediction))
-
-        if isinstance(y, np.ndarray):
-            return sum(y_pred == y)/len(y)
-        else:
-            return y_pred
+    def eval(self, X, y):
+        """
+        Return prediction metrics
+        """
+        y_pred = self.pred(X)
+        return np.sum(y_pred == y) / len(y)
