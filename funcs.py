@@ -131,7 +131,7 @@ class SVM():
         y_pred = []
         K_test = self._kernel_fun(X, self.X[self.sv_idx], self.gamma) # self.X[self.sv_idx] are the support vectors 
         prediction = np.sum(self.y[self.sv_idx] * self.alpha[self.sv_idx] * K_test,
-                            axis=1)
+                            axis=1) + self.bias
         y_pred = np.sign(prediction)
         return y_pred
 
