@@ -145,75 +145,119 @@ class SVM():
 
 
 
+def encode(y, letters):
+    """
+    Encode the labels y in {-1, 1}.
+
+    :param y: labels to encode
+    :param letters: list or tuple of length 2
+    
+    :return {-1, 1} encoding
+    """
+    return np.where(y == letters[0], -1, 1)
+
+
+def decode(y_pred, letters):
+    """
+    Decode the target values y_pred.
+
+    :param y_pred: target values in {-1, 1}
+    :param letters: class labels
+
+    :return decoded y
+    """
+    mapping = {n:l for l,n in zip(letters, (-1,1))}
+    return np.where(y_pred == -1, mapping[-1], mapping[1])
+
+
+def split_X_y(df):
+    """
+    Split the DataFrame into X and y.
+
+    :param df: DataFrame
+
+    :return X, y
+    """
+    X = df.drop(['letter'], axis=1).to_numpy(copy=True)
+    y = df['letter'].to_numpy(copy=True)
+    return X, y
+
+
+def process_df(df, letters):
+    """
+    Filter the rows belonging to the classes in letters and return processed X, y.
+
+    :param df: DataFrame
+    :param letters: class labels
+
+    :return X, y
+    """
+    mask = df.letter.isin(letters)
+    X, y = split_X_y(df[mask])
+    y = encode(y, letters)
+    return X, y
+
+
+
 class MultiSVM():
-    """
-    We will choose the one-vs-one since we have very few classes and in this manner we avoid the unbalance of one-vs-all
-    Make a nice implemenation for this part, but no sure how to do it really...The code that runs is present in the notebook
-    """
 
     def __init__(self, df,  C, gamma, kernel):
-        self.classes = df['letter'].unique().tolist() # infer the number of classes from the data
+        """
+        This class performs multi-class classification, providing the same API of the SVM class.
+
+        :param df: raw pandas.DataFrame containing features and labels
+        :param C: same as SVM()
+        :param gamma: same as SVM()
+        :param kernel: same as SVM()
+        """
+        self.classes = df['letter'].unique().tolist()
         self.C = C
         self.gamma = gamma
         self.kernel = kernel
         self.df = df
 
 
-    def _encode(self, y, letters):
+    def fit(self, tol=1e-4, fix_intercept=False):
         """
-        """
-        mapping = {l:n for l,n in zip(letters, (-1,1))}
-        return y.replace(mapping)
+        Generate as many SVM classifiers as the combinations of the classes (one-vs-one approach) 
+        and fit them
 
-
-    def _decode(self, y_pred, letters):
-        """
-        """
-        mapping = {n:l for l,n in zip(letters, (-1,1))}
-        return np.where(y_pred == -1, mapping[-1], mapping[1])
-
-
-    def _split_X_y(self, df):
-        """
-        """
-        X = df.drop(['letter'], axis=1).to_numpy(copy=True)
-        y = df['letter'].to_numpy(copy=True)
-        return X, y
-
-
-    def _process_df(self, df, letters):
-        """
-        """
-        mask = df.letter.isin(letters)
-        X, y = self._split_X_y(df[mask])
-        y = self._encode(y, letters).to_numpy()
-        return X, y
-
-
-    def fit(self, tol=1e-4, fix_intercept=True):
-        """
+        :param tol: same as SVM()
+        :param fix_intercept: same as SVM()
         """
         self._classifiers = {}
         for letters_pair in itertools.combinations(self.classes, r=2):
-            X, y = self._process_df(self.df, letters_pair)
+            X, y = process_df(self.df, letters_pair)
             self._classifiers[letters_pair] = SVM(X, y, self.C, self.gamma, self.kernel)
             self._classifiers[letters_pair].fit(tol, fix_intercept)
 
     
     def pred(self, X):
         """
+        Return the predictions given the observations X
+
+        :param X: features without labels; numpy.ndarray
+
+        :return predictions; np.ndarray
         """
         pred_list = []
         for letters_pair in self._classifiers.keys():
             y_pred_pair = self._classifiers[letters_pair].pred(X)
-            pred_list.append(self._decode(y_pred_pair))
+            pred_list.append(decode(y_pred_pair, letters_pair))
         votes = zip(*pred_list)
         y_pred = np.fromiter(map(lambda x: Counter(x).most_common(1)[0][0], votes), dtype='<U1')
         return y_pred
 
 
-    def evaluate(self, X, y):
+    def eval(self, X, y):
         """
+        Predict the class of the observations X and compare with the ground-truth y.
+        Return the accuracy score.
+
+        :param X: observations; numpy.ndarray
+        :param y: ground-truth labels
+
+        :return accuracy score
         """
         y_pred = self.pred(X)
         return np.sum(y_pred == y) / len(y)
