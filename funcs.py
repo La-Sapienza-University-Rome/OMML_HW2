@@ -1,3 +1,4 @@
+from os import supports_effective_ids
 import numpy as np
 from cvxopt import matrix, solvers
 
@@ -113,11 +114,9 @@ class SVM():
 
         self.bias = 0
         if not fix_intercept:
-            for i in range(np.sum(self.sv_idx)):
-                self.bias += self.y[self.sv_idx][i] - np.sum(
-                    self.y[self.sv_idx] * alphas[self.sv_idx] * self.K[self.idx[i], self.sv_idx])
-
-            self.bias = self.bias / np.sum(self.sv_idx)
+            self.bias = np.sum(self.y[self.sv_idx] - np.sum(
+                self.y[self.sv_idx] * alphas[self.sv_idx] * self.K[np.ix_(self.idx, self.sv_idx)], axis=1))
+            self.bias /= np.sum(self.sv_idx)
 
         return self.w, self.bias
 
