@@ -1,5 +1,7 @@
 import numpy as np
 from cvxopt import matrix, solvers
+import itertools
+from  collections import Counter
 
 
 def rbf(x1, x2, gamma):
@@ -141,9 +143,77 @@ class SVM():
         return np.sum(y_pred == y) / len(y)
 
 
-class MultiSVM(SVM):
+
+
+class MultiSVM():
     """
-    We will chose the one-vs-one since we have very few classes and in this manner we avoid the unbalance of one-vs-all
+    We will choose the one-vs-one since we have very few classes and in this manner we avoid the unbalance of one-vs-all
     Make a nice implemenation for this part, but no sure how to do it really...The code that runs is present in the notebook
     """
 
+    def __init__(self, df,  C, gamma, kernel):
+        self.classes = df['letter'].unique().tolist() # infer the number of classes from the data
+        self.C = C
+        self.gamma = gamma
+        self.kernel = kernel
+        self.df = df
+
+
+    def _encode(self, y, letters):
+        """
+        """
+        mapping = {l:n for l,n in zip(letters, (-1,1))}
+        return y.replace(mapping)
+
+
+    def _decode(self, y_pred, letters):
+        """
+        """
+        mapping = {n:l for l,n in zip(letters, (-1,1))}
+        return np.where(y_pred == -1, mapping[-1], mapping[1])
+
+
+    def _split_X_y(self, df):
+        """
+        """
+        X = df.drop(['letter'], axis=1).to_numpy(copy=True)
+        y = df['letter'].to_numpy(copy=True)
+        return X, y
+
+
+    def _process_df(self, df, letters):
+        """
+        """
+        mask = df.letter.isin(letters)
+        X, y = self._split_X_y(df[mask])
+        y = self._encode(y, letters).to_numpy()
+        return X, y
+
+
+    def fit(self, tol=1e-4, fix_intercept=True):
+        """
+        """
+        self._classifiers = {}
+        for letters_pair in itertools.combinations(self.classes, r=2):
+            X, y = self._process_df(self.df, letters_pair)
+            self._classifiers[letters_pair] = SVM(X, y, self.C, self.gamma, self.kernel)
+            self._classifiers[letters_pair].fit(tol, fix_intercept)
+
+    
+    def pred(self, X):
+        """
+        """
+        pred_list = []
+        for letters_pair in self._classifiers.keys():
+            y_pred_pair = self._classifiers[letters_pair].pred(X)
+            pred_list.append(self._decode(y_pred_pair))
+        votes = zip(*pred_list)
+        y_pred = np.fromiter(map(lambda x: Counter(x).most_common(1)[0][0], votes), dtype='<U1')
+        return y_pred
+
+
+    def evaluate(self, X, y):
+        """
+        """
+        y_pred = self.pred(X)
+        return np.sum(y_pred == y) / len(y)
