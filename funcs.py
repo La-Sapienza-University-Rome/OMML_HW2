@@ -1,8 +1,7 @@
-from os import supports_effective_ids
 import numpy as np
 from cvxopt import matrix, solvers
 import itertools
-from  collections import Counter
+from collections import Counter
 
 
 def rbf(x1, x2, gamma):
@@ -30,6 +29,33 @@ def polynomial(x1, x2, gamma):
     :return polynomial(x1)
     """
     return (1 + np.dot(x1, x2.T)) ** gamma
+
+
+def KKT_violations(alpha, y, X, w, bias, C):
+    """
+
+    :param alpha: Vector
+    :param y: Vector
+    :param X: Matrix
+    :param w: Vector
+    :param bias: Float
+    :param C: Integer
+    :return: The number of KKT violations that this solutions incurs in
+    """
+
+    # y(w*x_i+bias)
+    res = y * (np.dot(w, X.T) + bias)
+    # alpha = 0 --> res >= 1
+    idx1 = np.isclose(alpha, 0, atol=1e-2)
+    # alpha = C --> res <= 1
+    idx2 = np.isclose(alpha, C, atol=1e-2)
+    # 0 < alpha < C --> res = 1
+    idx3 = ~(idx1 + idx2)
+    num = sum(res[idx1] < 1)
+    num += sum(res[idx2] > 1)
+    num += sum(~np.isclose(res[idx3], 1, atol=1e-2))
+
+    return num
 
 
 class SVM():
@@ -66,7 +92,7 @@ class SVM():
         """
         Since we will be using cvxopt we have to generate an optimization problem of the following shape:
 
-        min 0.5x^Px + q^Tx
+        min 0.5x^TPx + q^Tx
         s.t. Gx <= h
              Ax = b
 
@@ -147,8 +173,6 @@ class SVM():
         return np.sum(y_pred == y) / len(y)
 
 
-
-
 def encode(y, letters):
     """
     Encode the labels y in {-1, 1}.
@@ -202,7 +226,6 @@ def process_df(df, letters):
     return X, y
 
 
-
 class MultiSVM():
 
     def __init__(self, df,  C, gamma, kernel):
@@ -220,7 +243,6 @@ class MultiSVM():
         self.kernel = kernel
         self.df = df
 
-
     def fit(self, tol=1e-4, fix_intercept=False):
         """
         Generate as many SVM classifiers as the combinations of the classes (one-vs-one approach) 
@@ -235,7 +257,6 @@ class MultiSVM():
             self._classifiers[letters_pair] = SVM(X, y, self.C, self.gamma, self.kernel)
             self._classifiers[letters_pair].fit(tol, fix_intercept)
 
-    
     def pred(self, X):
         """
         Return the predictions given the observations X
@@ -252,7 +273,6 @@ class MultiSVM():
         y_pred = np.fromiter(map(lambda x: Counter(x).most_common(1)[0][0], votes), dtype='<U1')
         return y_pred
 
-
     def eval(self, X, y):
         """
         Predict the class of the observations X and compare with the ground-truth y.
@@ -265,3 +285,16 @@ class MultiSVM():
         """
         y_pred = self.pred(X)
         return np.sum(y_pred == y) / len(y)
+
+
+#def confusion_matrix():
+    #TODO: Implement better
+    # clf.fit(X_train, y_train)
+    # y_fit = clf.predict(X_test)
+    #
+    # mat = confusion_matrix(y_test, y_fit)
+    # sns.heatmap(mat.T, square=True, annot=True, fmt='d', cbar=False, xticklabels=[class_A, class_B],
+    #             yticklabels=[class_A, class_B])
+    # plt.xlabel('true label')
+    # plt.ylabel('predicted label');
+    # plt.show()
