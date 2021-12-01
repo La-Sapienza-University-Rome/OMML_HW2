@@ -49,7 +49,6 @@ class SVM:
             self._kernel_fun = self.kernel_functions[self.kernel]
         except:
             raise NotImplementedError
-        self._generate_intermediate_variables()
 
     @property
     def state(self):
@@ -61,7 +60,7 @@ class SVM:
                       'C':self.C}
         return state_dict
 
-    def _generate_intermediate_variables(self):
+    def __generate_intermediate_variables(self):
         """
         Since we will be using cvxopt we have to generate an optimization problem of the following shape:
 
@@ -95,15 +94,15 @@ class SVM:
         This method performs the optimization over the alpha values using cvxopt
 
         """
-
         solvers.options['show_progress'] = False
+        self.__generate_intermediate_variables()
         self.fit_sol = solvers.qp(self.P, self.q, self.G, self.h, self.A, self.b)
 
         self.alpha = np.ravel(self.fit_sol['x'])
 
-        self.w, self.bias = self.compute_params(alphas=self.alpha, tol=tol, fix_intercept=fix_intercept)
+        self.w, self.bias = self._compute_params(alphas=self.alpha, tol=tol, fix_intercept=fix_intercept)
 
-    def compute_params(self, alphas, tol, fix_intercept=False):
+    def _compute_params(self, alphas, tol, fix_intercept=False):
         """
         This method returns a set of parameters estimated based on the previous fit
         """
@@ -148,36 +147,46 @@ class SVM:
 
 
 
-
 class SVMDecomposition(SVM):
 
     def __init__(self, X, y, C, gamma, kernel):
+        """
+        Class which implements the decomposition method for q>=2.
+        It can be subclassed or a new definition of the function _solve_subproblem() can be provided
+        in order to solve the case q=2 analitically.
+        """
         super().__init__(X, y, C, gamma, kernel)
 
 
-    # def _select_working_set(self, q, iteration):
-    #     """
-    #     """
-    #     # if iteration == 0:
-    #     #     return 1, 0, np.random.choice(np.arange(len(self.y)), q)
-        
-    #     R = np.logical_or(
-    #         np.logical_and(self.alpha < self.C, self.y == 1),
-    #         np.logical_and(self.alpha > 0, self.y == -1)
-    #     )
-    #     S = np.logical_or(
-    #         np.logical_and(self.alpha < self.C, self.y == -1),
-    #         np.logical_and(self.alpha > 0, self.y == 1)
-    #     )
-    #     I = np.argpartition(-self.y[R] * self.gradients[R], -q//2)[-q//2:][::-1] # equivalent to argmax
-    #     J = np.argpartition(-self.y[S] * self.gradients[S], q//2)[:q//2] # equivalent to argmin
-    #     m_a = -self.y[I[0]] * self.gradients[I[0]]; M_a = -self.y[J[0]] * self.gradients[J[0]]
-    #     working_set = np.concatenate((I,J))
-    #     return m_a, M_a, working_set
-
-
-    def _select_working_set(self, q, iteration):
+    def _compute_params(self, alphas, tol, fix_intercept=False):
         """
+        This method returns a set of parameters estimated based on the previous fit
+        """
+
+        self.sv_idx = (alphas > tol).reshape(len(self.X),)
+        self.idx = np.arange(len(alphas))[self.sv_idx]
+
+        self.w = (self.y[self.sv_idx] * alphas[self.sv_idx]).T @ self.X[self.sv_idx]
+
+        self.bias = 0
+        if not fix_intercept:
+            self.bias = np.sum(self.y[self.sv_idx] - np.sum(
+                self.y[self.sv_idx] * alphas[self.sv_idx] * self._kernel_fun(self.X[self.idx], self.X[self.sv_idx], self.gamma), axis=1))
+            self.bias /= np.sum(self.sv_idx)
+
+        return self.w, self.bias
+
+
+    def _select_working_set(self, q):
+        """
+        Select the working set according to the Most Violating Pair (MVP) strategy.
+        TODO: the implementation can be improved, at the moment this one is the one that works
+
+        :param q: cardinality of the working set
+
+        :return m_a: max {-y[I] * ∇f[I]}
+                M_a: min {-y[J] * ∇f[J]}
+                working_set: set of indices; numpy.ndarray
         """
         L = (self.alpha == 0) # at k=0, all True
         U = (self.alpha == self.C) # at k=0, all False
@@ -187,72 +196,74 @@ class SVMDecomposition(SVM):
         U_minus = U & (self.y < 0) # at k=0 all False
         R = L_plus | U_minus | ( (self.alpha > 0) & (self.alpha < self.C) ) # at k=0, pick from L_plus
         S = L_minus | U_plus | ( (self.alpha > 0) & (self.alpha < self.C) ) # at k=0, pick from L_minus
-        int_idx = np.argsort( (-self.y * self.gradients) ) # sort the array
+        int_idx = np.argsort( (-self.y * self._gradients) ) # sort the array
         I = int_idx[R][-q//2:][::-1] # argmax
         J = int_idx[S][:q//2] # argmin
+        m_a = -self.y[I[0]] * self._gradients[I[0]] # max i
+        M_a = -self.y[J[0]] * self._gradients[J[0]] # min j
         working_set = np.concatenate( (I, J) )
-        m_a = -self.y[I[0]] * self.gradients[I[0]] # max i
-        M_a = -self.y[J[0]] * self.gradients[J[0]] # min j
         return m_a, M_a, working_set
 
 
     # TODO: implement efficient cache
-    def _hessian_handler(self, working_set, working_set_size):
+    def _hessian_handler(self, working_set):
         """
+        Manage the Hessian matrix by exploiting an efficient cache (TODO).
+
+        :param working_set: indices of the working set; numpy.ndarray
+
+        :return columns of the Hessian matrix Q (cfr. theory); numpy.ndarray
         """
-        # Q = np.empty((working_set_size, working_set_size))
-        # I = working_set[:working_set_size//2]; J = working_set[working_set_size//2:]
-        # for idx_i, i in enumerate(I):
-        #     for idx_j, j in enumerate(J): 
-        #         if (i,j) not in self._kernel_cache.keys():
-        #             self._kernel_cache[(i,j)] = self._kernel_fun(self.X[i, np.newaxis], self.X[j, np.newaxis], self.gamma)
-        #         Q[idx_i:idx_i+working_set_size//2, idx_j:idx_j+working_set_size//2] = self._kernel_cache[(i,j)]
-       
-        return self._hessian_cache[working_set[:,np.newaxis], working_set[np.newaxis,:]]
+        return self._hessian_cache[:,working_set] # return the corresponding columns of Q
 
 
     def _solve_subproblem(self, working_set, working_set_size):
         """
+        Solve numerically the subproblem w.r.t. the alphas in the working set 
+        by means of a quadratic programming solver.
+
+        :param working_set: indices of the working set; numpy.ndarray
+
+        :return solution object of the subproblem
         """
-        P = self._hessian_handler(working_set, working_set_size)
+        solvers.options['show_progress'] = False
+        P = matrix(self._hessian_handler(working_set)[working_set,:]) # select the ij rows of the ij columns of the hessian
         q = matrix(np.ones(working_set_size) * -1)
         G = matrix(np.vstack((np.diag(np.ones(working_set_size) * -1), np.identity(working_set_size))))
         h = matrix(np.hstack((np.zeros(working_set_size), np.ones(working_set_size) * self.C)))
         A = matrix(self.y[working_set], (1, working_set_size), 'd')
         b = matrix(np.zeros(1))
-        # print(P.shape)
-        return P, solvers.qp(matrix(P), q, G, h, A, b)
-
-
-    """
-    self.q = matrix(np.ones(obs) * -1)
-        self.G = matrix(np.vstack((np.diag(np.ones(obs) * -1), np.identity(obs))))
-        self.h = matrix(np.hstack((np.zeros(obs), np.ones(obs) * self.C)))
-        self.A = matrix(self.y, (1, obs), 'd')
-        self.b = matrix(np.zeros(1))
-    """
+        return solvers.qp(P, q, G, h, A, b)
 
 
     def fit(self, working_set_size, max_iters=500, tol=1e-4, fix_intercept=False):
         """
+        Perform the optimization over the alpha values using the decomposition algorithm.
 
+        :param working_set_size: even number greater or equal than 2; called q in the homework/literature
+        :param max_iters: stop the optimization loop after a certain number of iterations
+        :param tol: tolerance for computing the support vectors
+        :param fix_intercept: whether fix the intercept to 0 or not
+
+        :rerturn (no return value)  
         """
-        solvers.options['show_progress'] = False
+        # Compute the Hessian. TODO: implement cache
         yi_yj = np.outer(self.y, self.y)
-        self._hessian_cache = yi_yj * self._kernel_fun(self.X, self.X, self.gamma) # change into an efficient cache
+        self._hessian_cache = yi_yj * self._kernel_fun(self.X, self.X, self.gamma)
+        
+        # Setup initial values
         self.alpha = np.zeros(self.y.shape)
-        self.gradients = np.full(self.y.shape, fill_value=-1)
+        self._gradients = np.full(self.y.shape, fill_value=-1)
         i = 0; m_a = 1; M_a = 0
+
+        # Decomposition
         while  (i < max_iters) and (m_a - M_a > 0):
-            m_a, M_a, working_set = self._select_working_set(working_set_size, iteration=i)
-            P, fit_sol = self._solve_subproblem(working_set, working_set_size)
-            self.gradients = self.gradients + np.squeeze(self._hessian_cache[:,working_set] @ ((np.ravel(fit_sol['x']) - self.alpha[working_set])[:,np.newaxis]))
+            m_a, M_a, working_set = self._select_working_set(working_set_size)
+            fit_sol = self._solve_subproblem(working_set, working_set_size)
+            self._gradients = self._gradients + np.squeeze(self._hessian_handler(working_set) @ ((np.ravel(fit_sol['x']) - self.alpha[working_set])[:,np.newaxis]))
             self.alpha[working_set] = np.ravel(fit_sol['x'])
             i += 1
-        self.w, self.bias = self.compute_params(alphas=self.alpha, tol=tol, fix_intercept=fix_intercept)
-
-
-
+        self.w, self.bias = self._compute_params(alphas=self.alpha, tol=tol, fix_intercept=fix_intercept)
 
         
 
