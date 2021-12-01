@@ -115,11 +115,11 @@ class SVM:
 
         self.bias = 0
         if not fix_intercept:
-            # for i in range(np.sum(self.sv_idx)):
-            #     self.bias += self.y[self.sv_idx][i] - np.sum(
-            #         self.y[self.sv_idx] * alphas[self.sv_idx] * self.K[self.idx[i], self.sv_idx])
+        #     for i in range(np.sum(self.sv_idx)):
+        #         self.bias += self.y[self.sv_idx][i] - np.sum(
+        #             self.y[self.sv_idx] * alphas[self.sv_idx] * self.K[self.idx[i], self.sv_idx])
 
-            # self.bias = self.bias / np.sum(self.sv_idx)
+        #     self.bias = self.bias / np.sum(self.sv_idx)
             self.bias = np.sum(self.y[self.sv_idx] - np.sum(
                 self.y[self.sv_idx] * alphas[self.sv_idx] * self.K[np.ix_(self.idx, self.sv_idx)], axis=1))
             self.bias /= np.sum(self.sv_idx)
@@ -179,20 +179,21 @@ class SVMDecomposition(SVM):
     def _select_working_set(self, q, iteration):
         """
         """
-        L = self.alpha == 0
-        U = self.alpha == self.C
-        L_plus = L & (self.y > 0)
-        L_minus = L & (self.y < 0)
-        U_plus = U & (self.y > 0)
-        U_minus = U & (self.y < 0)
-        R = L_plus | U_minus | ( (self.alpha > 0) & (self.alpha < self.C) )
-        S = L_minus | U_plus | ( (self.alpha > 0) & (self.alpha < self.C) )
-        I = np.argsort(- (-self.y[R] * self.gradients[R]) )[:q//2] # argmax
-        J = np.argsort(  (-self.y[S] * self.gradients[S]) )[:q//2] # argmin
+        L = (self.alpha == 0) # at k=0, all True
+        U = (self.alpha == self.C) # at k=0, all False
+        L_plus = L & (self.y > 0) # only those with y > 0 True
+        L_minus = L & (self.y < 0) # only those with y < 0 True
+        U_plus = U & (self.y > 0) # at k=0 all False
+        U_minus = U & (self.y < 0) # at k=0 all False
+        R = L_plus | U_minus | ( (self.alpha > 0) & (self.alpha < self.C) ) # at k=0, pick from L_plus
+        S = L_minus | U_plus | ( (self.alpha > 0) & (self.alpha < self.C) ) # at k=0, pick from L_minus
+        int_idx = np.argsort( (-self.y * self.gradients) ) # sort the array
+        I = int_idx[R][-q//2:][::-1] # argmax
+        J = int_idx[S][:q//2] # argmin
         working_set = np.concatenate( (I, J) )
-        # m_a = -self.y[I[0]] * self.gradients[I[0]] # max i
-        # M_a = -self.y[J[0]] * self.gradients[J[0]] # min j
-        return working_set
+        m_a = -self.y[I[0]] * self.gradients[I[0]] # max i
+        M_a = -self.y[J[0]] * self.gradients[J[0]] # min j
+        return m_a, M_a, working_set
 
 
     # TODO: implement efficient cache
@@ -243,13 +244,11 @@ class SVMDecomposition(SVM):
         self.gradients = np.full(self.y.shape, fill_value=-1)
         i = 0; m_a = 1; M_a = 0
         while  (i < max_iters) and (m_a - M_a > 0):
-            working_set = self._select_working_set(working_set_size, iteration=i)
+            m_a, M_a, working_set = self._select_working_set(working_set_size, iteration=i)
             P, fit_sol = self._solve_subproblem(working_set, working_set_size)
             self.gradients = self.gradients + np.squeeze(self._hessian_cache[:,working_set] @ ((np.ravel(fit_sol['x']) - self.alpha[working_set])[:,np.newaxis]))
             self.alpha[working_set] = np.ravel(fit_sol['x'])
             i += 1
-            m_a = -self.y[working_set[0]] * self.gradients[working_set[0]] # max i
-            M_a = -self.y[working_set[0]] * self.gradients[working_set[0]] # min j
         self.w, self.bias = self.compute_params(alphas=self.alpha, tol=tol, fix_intercept=fix_intercept)
 
 
