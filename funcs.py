@@ -1,4 +1,3 @@
-from os import supports_effective_ids
 import numpy as np
 from cvxopt import matrix, solvers
 import itertools
@@ -32,7 +31,7 @@ def polynomial(x1, x2, gamma):
     return (1 + np.dot(x1, x2.T)) ** gamma
 
 
-class SVM():
+class SVM:
     # class attribute
     kernel_functions = {'poly':polynomial, # convenient alias which matches the Sklearn API
                         'polynomial':polynomial,
@@ -146,6 +145,117 @@ class SVM():
         y_pred = self.pred(X)
         return np.sum(y_pred == y) / len(y)
 
+
+
+
+
+class SVMDecomposition(SVM):
+
+    def __init__(self, X, y, C, gamma, kernel):
+        super().__init__(X, y, C, gamma, kernel)
+
+
+    # def _select_working_set(self, q, iteration):
+    #     """
+    #     """
+    #     # if iteration == 0:
+    #     #     return 1, 0, np.random.choice(np.arange(len(self.y)), q)
+        
+    #     R = np.logical_or(
+    #         np.logical_and(self.alpha < self.C, self.y == 1),
+    #         np.logical_and(self.alpha > 0, self.y == -1)
+    #     )
+    #     S = np.logical_or(
+    #         np.logical_and(self.alpha < self.C, self.y == -1),
+    #         np.logical_and(self.alpha > 0, self.y == 1)
+    #     )
+    #     I = np.argpartition(-self.y[R] * self.gradients[R], -q//2)[-q//2:][::-1] # equivalent to argmax
+    #     J = np.argpartition(-self.y[S] * self.gradients[S], q//2)[:q//2] # equivalent to argmin
+    #     m_a = -self.y[I[0]] * self.gradients[I[0]]; M_a = -self.y[J[0]] * self.gradients[J[0]]
+    #     working_set = np.concatenate((I,J))
+    #     return m_a, M_a, working_set
+
+
+    def _select_working_set(self, q, iteration):
+        """
+        """
+        L = self.alpha == 0
+        U = self.alpha == self.C
+        L_plus = L & (self.y > 0)
+        L_minus = L & (self.y < 0)
+        U_plus = U & (self.y > 0)
+        U_minus = U & (self.y < 0)
+        R = L_plus | U_minus | ( (self.alpha > 0) & (self.alpha < self.C) )
+        S = L_minus | U_plus | ( (self.alpha > 0) & (self.alpha < self.C) )
+        I = np.argsort(- (-self.y[R] * self.gradients[R]) )[:q//2] # argmax
+        J = np.argsort(  (-self.y[S] * self.gradients[S]) )[:q//2] # argmin
+        working_set = np.concatenate( (I, J) )
+        # m_a = -self.y[I[0]] * self.gradients[I[0]] # max i
+        # M_a = -self.y[J[0]] * self.gradients[J[0]] # min j
+        return working_set
+
+
+    # TODO: implement efficient cache
+    def _hessian_handler(self, working_set, working_set_size):
+        """
+        """
+        # Q = np.empty((working_set_size, working_set_size))
+        # I = working_set[:working_set_size//2]; J = working_set[working_set_size//2:]
+        # for idx_i, i in enumerate(I):
+        #     for idx_j, j in enumerate(J): 
+        #         if (i,j) not in self._kernel_cache.keys():
+        #             self._kernel_cache[(i,j)] = self._kernel_fun(self.X[i, np.newaxis], self.X[j, np.newaxis], self.gamma)
+        #         Q[idx_i:idx_i+working_set_size//2, idx_j:idx_j+working_set_size//2] = self._kernel_cache[(i,j)]
+       
+        return self._hessian_cache[working_set[:,np.newaxis], working_set[np.newaxis,:]]
+
+
+    def _solve_subproblem(self, working_set, working_set_size):
+        """
+        """
+        P = self._hessian_handler(working_set, working_set_size)
+        q = matrix(np.ones(working_set_size) * -1)
+        G = matrix(np.vstack((np.diag(np.ones(working_set_size) * -1), np.identity(working_set_size))))
+        h = matrix(np.hstack((np.zeros(working_set_size), np.ones(working_set_size) * self.C)))
+        A = matrix(self.y[working_set], (1, working_set_size), 'd')
+        b = matrix(np.zeros(1))
+        # print(P.shape)
+        return P, solvers.qp(matrix(P), q, G, h, A, b)
+
+
+    """
+    self.q = matrix(np.ones(obs) * -1)
+        self.G = matrix(np.vstack((np.diag(np.ones(obs) * -1), np.identity(obs))))
+        self.h = matrix(np.hstack((np.zeros(obs), np.ones(obs) * self.C)))
+        self.A = matrix(self.y, (1, obs), 'd')
+        self.b = matrix(np.zeros(1))
+    """
+
+
+    def fit(self, working_set_size, max_iters=500, tol=1e-4, fix_intercept=False):
+        """
+
+        """
+        solvers.options['show_progress'] = False
+        yi_yj = np.outer(self.y, self.y)
+        self._hessian_cache = yi_yj * self._kernel_fun(self.X, self.X, self.gamma) # change into an efficient cache
+        self.alpha = np.zeros(self.y.shape)
+        self.gradients = np.full(self.y.shape, fill_value=-1)
+        i = 0; m_a = 1; M_a = 0
+        while  (i < max_iters) and (m_a - M_a > 0):
+            working_set = self._select_working_set(working_set_size, iteration=i)
+            P, fit_sol = self._solve_subproblem(working_set, working_set_size)
+            self.gradients = self.gradients + np.squeeze(self._hessian_cache[:,working_set] @ ((np.ravel(fit_sol['x']) - self.alpha[working_set])[:,np.newaxis]))
+            self.alpha[working_set] = np.ravel(fit_sol['x'])
+            i += 1
+            m_a = -self.y[working_set[0]] * self.gradients[working_set[0]] # max i
+            M_a = -self.y[working_set[0]] * self.gradients[working_set[0]] # min j
+        self.w, self.bias = self.compute_params(alphas=self.alpha, tol=tol, fix_intercept=fix_intercept)
+
+
+
+
+        
 
 
 
