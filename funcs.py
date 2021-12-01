@@ -2,6 +2,7 @@ import numpy as np
 from cvxopt import matrix, solvers
 import itertools
 from  collections import Counter
+from functools import lru_cache
 
 
 def rbf(x1, x2, gamma):
@@ -120,7 +121,7 @@ class SVM:
 
         #     self.bias = self.bias / np.sum(self.sv_idx)
             self.bias = np.sum(self.y[self.sv_idx] - np.sum(
-                self.y[self.sv_idx] * alphas[self.sv_idx] * self.K[np.ix_(self.idx, self.sv_idx)], axis=1))
+                self.y[self.sv_idx] * alphas[self.sv_idx] * self.K[np.ix_(self.sv_idx, self.sv_idx)], axis=1))
             self.bias /= np.sum(self.sv_idx)
 
         return self.w, self.bias
@@ -171,7 +172,7 @@ class SVMDecomposition(SVM):
         self.bias = 0
         if not fix_intercept:
             self.bias = np.sum(self.y[self.sv_idx] - np.sum(
-                self.y[self.sv_idx] * alphas[self.sv_idx] * self._kernel_fun(self.X[self.idx], self.X[self.sv_idx], self.gamma), axis=1))
+                self.y[self.sv_idx] * alphas[self.sv_idx] * self._kernel_fun(self.X[self.sv_idx], self.X[self.sv_idx], self.gamma), axis=1))
             self.bias /= np.sum(self.sv_idx)
 
         return self.w, self.bias
@@ -189,7 +190,7 @@ class SVMDecomposition(SVM):
                 working_set: set of indices; numpy.ndarray
         """
         L = (self.alpha == 0) # at k=0, all True
-        U = (self.alpha == self.C) # at k=0, all False
+        U = (self.alpha == self.C)
         L_plus = L & (self.y > 0) # only those with y > 0 True
         L_minus = L & (self.y < 0) # only those with y < 0 True
         U_plus = U & (self.y > 0) # at k=0 all False
@@ -205,16 +206,34 @@ class SVMDecomposition(SVM):
         return m_a, M_a, working_set
 
 
-    # TODO: implement efficient cache
+    @lru_cache
+    def _hessian_cache(self, index):
+        """
+        Implement the cache of the Hessian matrix columns exploiting the efficient 
+        Python decorator @lru_cache.
+
+        :param index: index of the working set for which compute (or return) 
+                      the corresponding column of the Hessian
+        
+        :return column Q_index
+        """
+        Q_index = np.outer(self.y[index], self.y) * self._kernel_fun(self.X[index], self.X, self.gamma)
+        return Q_index.T
+
+
     def _hessian_handler(self, working_set):
         """
-        Manage the Hessian matrix by exploiting an efficient cache (TODO).
+        Manage the Hessian matrix by exploiting an efficient cache.
 
         :param working_set: indices of the working set; numpy.ndarray
 
         :return columns of the Hessian matrix Q (cfr. theory); numpy.ndarray
         """
-        return self._hessian_cache[:,working_set] # return the corresponding columns of Q
+        Q_ws = []
+        for i in working_set:
+            Q_ws.append(self._hessian_cache(i))
+        Q_ws = np.hstack(Q_ws)
+        return Q_ws
 
 
     def _solve_subproblem(self, working_set, working_set_size):
@@ -236,31 +255,30 @@ class SVMDecomposition(SVM):
         return solvers.qp(P, q, G, h, A, b)
 
 
-    def fit(self, working_set_size, max_iters=500, tol=1e-4, fix_intercept=False):
+    def fit(self, working_set_size, max_iters=500, stop_thr=1e-5, tol=1e-4, fix_intercept=False):
         """
         Perform the optimization over the alpha values using the decomposition algorithm.
 
         :param working_set_size: even number greater or equal than 2; called q in the homework/literature
         :param max_iters: stop the optimization loop after a certain number of iterations
+        :param stop_thr: tolerance threshold for the stopping criterion m(a) - M(a) > stop_thr
         :param tol: tolerance for computing the support vectors
         :param fix_intercept: whether fix the intercept to 0 or not
 
         :rerturn (no return value)  
         """
-        # Compute the Hessian. TODO: implement cache
-        yi_yj = np.outer(self.y, self.y)
-        self._hessian_cache = yi_yj * self._kernel_fun(self.X, self.X, self.gamma)
-        
         # Setup initial values
         self.alpha = np.zeros(self.y.shape)
         self._gradients = np.full(self.y.shape, fill_value=-1)
         i = 0; m_a = 1; M_a = 0
 
         # Decomposition
-        while  (i < max_iters) and (m_a - M_a > 0):
+        while  (i < max_iters) and (m_a - M_a > stop_thr):
             m_a, M_a, working_set = self._select_working_set(working_set_size)
             fit_sol = self._solve_subproblem(working_set, working_set_size)
-            self._gradients = self._gradients + np.squeeze(self._hessian_handler(working_set) @ ((np.ravel(fit_sol['x']) - self.alpha[working_set])[:,np.newaxis]))
+            step = (np.ravel(fit_sol['x']) - self.alpha[working_set])[:,np.newaxis]
+            Q_ws = self._hessian_handler(working_set)
+            self._gradients = self._gradients + np.squeeze(Q_ws @ step)
             self.alpha[working_set] = np.ravel(fit_sol['x'])
             i += 1
         self.w, self.bias = self._compute_params(alphas=self.alpha, tol=tol, fix_intercept=fix_intercept)
