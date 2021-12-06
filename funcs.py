@@ -177,11 +177,18 @@ class SVMDecomposition(SVM):
 
         return self.w, self.bias
 
+    
+    def _update_ws_age(self, working_set):
+        """
+        """
+        ws_mask = np.full(self.alpha.shape, fill_value=False)
+        ws_mask[working_set] = True
+        self._ws_age[ws_mask] += -1
 
-    def _select_working_set(self, q):
+
+    def _select_working_set(self, q, atol=1e-3, M=10):
         """
         Select the working set according to the Most Violating Pair (MVP) strategy.
-        TODO: the implementation can be improved, at the moment this one is the one that works
 
         :param q: cardinality of the working set
 
@@ -189,20 +196,15 @@ class SVMDecomposition(SVM):
                 M_a: min {-y[J] * ∇f[J]}
                 working_set: set of indices; numpy.ndarray
         """
-        L = (self.alpha == 0) # at k=0, all True
-        U = (self.alpha == self.C)
-        L_plus = L & (self.y > 0) # only those with y > 0 True
-        L_minus = L & (self.y < 0) # only those with y < 0 True
-        U_plus = U & (self.y > 0) # at k=0 all False
-        U_minus = U & (self.y < 0) # at k=0 all False
-        R = L_plus | U_minus | ( (self.alpha > 0) & (self.alpha < self.C) ) # at k=0, pick from L_plus
-        S = L_minus | U_plus | ( (self.alpha > 0) & (self.alpha < self.C) ) # at k=0, pick from L_minus
-        int_idx = np.argsort( (-self.y * self._gradients) ) # sort the array
-        I = int_idx[R][-q//2:][::-1] # argmax
-        J = int_idx[S][:q//2] # argmin
+        R = (((self.alpha < self.C) & (self.y == 1)) | ((self.alpha > 0) & (self.y == -1))) & (self._ws_age > 0)
+        S = (((self.alpha < self.C) & (self.y == -1)) | ((self.alpha > 0) & (self.y == 1))) & (self._ws_age > 0)
+        int_idx = np.argsort( -self.y * self._gradients ) # sort the array
+        I = int_idx[R[int_idx]][-q//2:][::-1] # argmax
+        J = int_idx[S[int_idx]][:q//2] # argmin
         m_a = -self.y[I[0]] * self._gradients[I[0]] # max i
         M_a = -self.y[J[0]] * self._gradients[J[0]] # min j
         working_set = np.concatenate( (I, J) )
+        self._update_ws_age(working_set)
         return m_a, M_a, working_set
 
 
@@ -217,8 +219,9 @@ class SVMDecomposition(SVM):
         
         :return column Q_index
         """
-        Q_index = np.outer(self.y[index], self.y) * self._kernel_fun(self.X[index], self.X, self.gamma)
-        return Q_index.T
+        K_index = self._kernel_fun(self.X, self.X[index,np.newaxis], self.gamma)
+        Q_index = (self.y * self.y[index])[:,np.newaxis] * K_index
+        return Q_index
 
 
     def _hessian_handler(self, working_set):
@@ -246,22 +249,26 @@ class SVMDecomposition(SVM):
         :return solution object of the subproblem
         """
         solvers.options['show_progress'] = False
-        P = matrix(self._hessian_handler(working_set)[working_set,:]) # select the ij rows of the ij columns of the hessian
-        q = matrix(np.ones(working_set_size) * -1)
+        ws_mask = np.full(self.y.shape, fill_value=True)
+        ws_mask[working_set] = False # get the mask for the complement set of the working set
+        Q = self._hessian_handler(working_set)
+        P = matrix(Q[working_set,:]) # select the ij rows of the ij columns of the hessian
+        q = matrix(np.squeeze(self.alpha[np.newaxis,ws_mask] @ Q[ws_mask,:] - np.ones(working_set_size)))
         G = matrix(np.vstack((np.diag(np.ones(working_set_size) * -1), np.identity(working_set_size))))
         h = matrix(np.hstack((np.zeros(working_set_size), np.ones(working_set_size) * self.C)))
         A = matrix(self.y[working_set], (1, working_set_size), 'd')
-        b = matrix(np.zeros(1))
+        b = matrix(-self.y[ws_mask][np.newaxis,:] @ self.alpha[ws_mask][:, np.newaxis])
         return solvers.qp(P, q, G, h, A, b)
 
 
-    def fit(self, working_set_size, max_iters=500, stop_thr=1e-5, tol=1e-4, fix_intercept=False):
+    def fit(self, working_set_size, max_iters=500, stop_thr=1e-5, M=10, tol=1e-4, fix_intercept=False):
         """
         Perform the optimization over the alpha values using the decomposition algorithm.
 
         :param working_set_size: even number greater or equal than 2; called q in the homework/literature
         :param max_iters: stop the optimization loop after a certain number of iterations
         :param stop_thr: tolerance threshold for the stopping criterion m(a) - M(a) > stop_thr
+        :param M: 
         :param tol: tolerance for computing the support vectors
         :param fix_intercept: whether fix the intercept to 0 or not
 
@@ -270,6 +277,7 @@ class SVMDecomposition(SVM):
         # Setup initial values
         self.alpha = np.zeros(self.y.shape)
         self._gradients = np.full(self.y.shape, fill_value=-1)
+        self._ws_age = np.full(self.y.shape, fill_value=M)
         i = 0; m_a = 1; M_a = 0
 
         # Decomposition
@@ -282,6 +290,7 @@ class SVMDecomposition(SVM):
             self.alpha[working_set] = np.ravel(fit_sol['x'])
             i += 1
         self.w, self.bias = self._compute_params(alphas=self.alpha, tol=tol, fix_intercept=fix_intercept)
+        print(f'Converged after {i} iterations')
 
         
 
