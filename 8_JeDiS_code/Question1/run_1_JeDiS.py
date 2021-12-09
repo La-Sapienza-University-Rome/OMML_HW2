@@ -1,9 +1,9 @@
 """
 For making the script run:
-- set the JeDiS_HW1 folder as the current directory
-- run: python ./Question11/run_11_JeDiS.py
+- set the 8_JeDiS folder as the current directory
+- run: python ./Question1/run_1_JeDiS.py
 
-NOTE: the data is supposed to be in JeDiS_HW1/data/DATA.csv
+NOTE: the data is supposed to be in JeDiS_HW1/data/*.csv
 """
 
 import sys
@@ -31,7 +31,7 @@ train_df, test_df = train_test_split(df, test_size=0.2, random_state=1939671)
 
 # Run hyperparameter tunning for RBF Kernel
 C = 5
-gamma = 0.1
+gamma = 0.15
 kernel = 'rbf'
 
 X, y = process_df(train_df, ['Q', 'O'])

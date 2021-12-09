@@ -34,7 +34,7 @@ df[columns] = preprocessing.StandardScaler().fit_transform(df[columns])
 train_df, test_df = train_test_split(df, test_size=0.2, random_state=1939671)
 
 C = 5
-gamma = 0.1
+gamma = 0.15
 kernel = 'rbf'
 
 start = time.time()
