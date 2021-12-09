@@ -400,10 +400,12 @@ class MultiSVM():
         :param fix_intercept: same as SVM()
         """
         self._classifiers = {}
+        self.iter = 0
         for letters_pair in itertools.combinations(self.classes, r=2):
             X, y = process_df(self.df, letters_pair)
             self._classifiers[letters_pair] = SVM(X, y, self.C, self.gamma, self.kernel)
             self._classifiers[letters_pair].fit(tol, fix_intercept)
+            self.iter += self._classifiers[letters_pair].fit_sol['iterations']
 
     def pred(self, X):
         """
