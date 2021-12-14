@@ -288,15 +288,26 @@ class SVMDecomposition(SVM):
         return solvers.qp(P, q, G, h, A, b)
 
     def __get_di(self, di, dj, alphai, alphaj, c):
+        """
+        Retrieve the value for beta_var depending on the rules defined.
+
+        :param di: direction for i; Integer
+        :param dj: direction for j; Integer
+        :param alphai: alpha value for i; Float
+        :param alphaj: alpha value for j; Float
+        :param c: Penalty parameter of the error term; Float
+        
+        :return value of beta_bar
+        """   
         if (di>0 and dj>0):
-            t= min(c-alphai,c-alphaj)
+            beta_bar = min(c - alphai, c - alphaj)
         elif (di<0 and dj<0):
-            t= min(alphai,alphaj)
+            beta_bar = min(alphai, alphaj)
         elif (di>0 and dj<0):
-            t= min(c-alphai,alphaj)
+            beta_bar = min(c - alphai, alphaj)
         elif (di<0 and dj>0):
-            t= min(alphai,c-alphaj)
-        return t
+            beta_bar = min(alphai, c - alphaj)
+        return beta_bar
     
     def _solve_subproblem_analytical(self, working_set, working_set_size = 2):
         """
