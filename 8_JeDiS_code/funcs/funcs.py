@@ -287,7 +287,7 @@ class SVMDecomposition(SVM):
         b = matrix(-self.y[ws_mask][np.newaxis,:] @ self.alpha[ws_mask][:, np.newaxis])
         return solvers.qp(P, q, G, h, A, b)
 
-    def __get_di(self, di, dj, alphai, alphaj, c):
+    def _get_di(self, di, dj, alphai, alphaj, c):
         """
         Retrieve the value for beta_var depending on the rules defined.
 
@@ -341,13 +341,12 @@ class SVMDecomposition(SVM):
         di[1] = - y_ws[1]
         
         # Define beta bar by the conditions given
-        beta_bar = self.__get_di(di[0], di[1], self.alpha[I], self.alpha[J], self.C)
+        beta_bar = self._get_di(di[0], di[1], self.alpha[I], self.alpha[J], self.C)
         
-        # 
+        # Evaluate 
         if np.dot(gradients_ws.T, di) == 0: 
             beta_star = 0
         else:
-            
             if np.dot(gradients_ws.T, di) < 0:
                 d_star = di
             else:
