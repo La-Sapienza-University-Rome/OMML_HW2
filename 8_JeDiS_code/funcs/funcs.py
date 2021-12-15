@@ -324,31 +324,31 @@ class SVMDecomposition(SVM):
         J = working_set[1]
         
         # Get information with the indexes of the working data set
-        X_sub = self.X[[I,J],]
-        y_sub = self.y[[I,J]]
-        alpha_sub = self.alpha[[I,J]]
-        gradients_sub = self._gradients[[I,J]]
+        X_ws = self.X[[I,J],]
+        y_ws = self.y[[I,J]]
+        alpha_ws = self.alpha[[I,J]]
+        gradients_ws = self._gradients[[I,J]]
         
-        # Generate Q (semidefinite positve) matrix 
-        Q_sub = np.dot((np.dot(np.diag(y_sub), rbf(X_sub, X_sub, self.gamma))), np.diag(y_sub))
+        # Generate Q (semidefinite positive) matrix 
+        Q_sub = np.dot((np.dot(np.diag(y_ws), rbf(X_ws, X_ws, self.gamma))), np.diag(y_ws))
         
         # Initialize direction and alpha_star result
         di = np.zeros(working_set_size)
         alpha_star = np.zeros(working_set_size)
         
         # Define directions
-        di[0] =   y_sub[0]
-        di[1] = - y_sub[1]
+        di[0] =   y_ws[0]
+        di[1] = - y_ws[1]
         
         # Define beta bar by the conditions given
         beta_bar = self.__get_di(di[0], di[1], self.alpha[I], self.alpha[J], self.C)
         
         # 
-        if np.dot(gradients_sub.T, di) == 0: 
+        if np.dot(gradients_ws.T, di) == 0: 
             beta_star = 0
         else:
             
-            if np.dot(gradients_sub.T, di) < 0:
+            if np.dot(gradients_ws.T, di) < 0:
                 d_star = di
             else:
                 d_star = -di
@@ -362,13 +362,13 @@ class SVMDecomposition(SVM):
             beta_star = beta_bar
         else:
             if np.dot(np.dot(d_star.T, Q_sub), d_star) > 0:
-                beta_nv = -np.dot(gradients_sub.T, d_star) / np.dot(np.dot(d_star.T, Q_sub), d_star)
+                beta_nv = -np.dot(gradients_ws.T, d_star) / np.dot(np.dot(d_star.T, Q_sub), d_star)
                 beta_star = min(beta_bar, beta_nv)
         
         
         # Calculate the solution
-        alpha_star[0] = alpha_sub[0] + (beta_star * d_star[0])
-        alpha_star[1] = alpha_sub[1] + (beta_star * d_star[1])
+        alpha_star[0] = alpha_ws[0] + (beta_star * d_star[0])
+        alpha_star[1] = alpha_ws[1] + (beta_star * d_star[1])
         
         return alpha_star
     
@@ -413,9 +413,8 @@ class SVMDecomposition(SVM):
             self.i += 1
         
         self.w, self.bias = self._compute_params(alphas=self.alpha, tol=tol, fix_intercept=fix_intercept)
-#         print(f'Converged after {self.i} iterations')
-
         
+#         print(f'Converged after {self.i} iterations')
 
 
 def encode(y, letters):
