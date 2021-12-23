@@ -38,6 +38,7 @@ train_df, test_df = train_test_split(df, test_size=0.2, random_state=1939671)
 C = 5
 gamma = 0.15
 kernel = 'rbf'
+q = 10
 
 # Process dataframes to have them ready to apply the SVM
 X, y = process_df(train_df, ['Q', 'O'])
@@ -47,7 +48,7 @@ start = time.time()
 
 # Fit SVM with the MVP method
 svm = SVMDecomposition(X, y, C=C, gamma=gamma, kernel=kernel)
-svm.fit(working_set_size=10, max_iters=5000, stop_thr=1e-3, tol=1e-3)
+svm.fit(working_set_size=q, max_iters=5000, stop_thr=1e-3, tol=1e-3)
 
 stop = time.time()
 
@@ -74,11 +75,9 @@ print('gamma: ', gamma)
 print('kernel: ', kernel)
 print('Classification Rate on Training Set:', round(train_acc, 3)*100, '%')
 print('Classification Rate on Test Set:', round(test_acc, 3)*100, '%')
-#confusion_matrix(y_test=y_test, y_fit=svm.pred(X_test))
 matrix = confusion_matrix(y_test, svm.pred(X_test)).ravel()
 print('Confusion Matrix: \n', matrix.reshape((2, 2)))
 print('Computational Time:', time, ' s')
 print('Number of optimizations:', num_it)
-# print(KKT)
-print(init_obj)
-print(fin_obj)
+print('m(α) - M(α):', svm.diff_ma_Ma)
+print('Value of q:', q)

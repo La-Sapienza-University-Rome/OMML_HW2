@@ -259,7 +259,7 @@ class SVMDecomposition(SVM):
         return self.w, self.bias
 
 
-    def _select_working_set(self, q, atol=1e-4):
+    def _select_working_set(self, q, atol=1e-3):
         """
         Select the working set according to the Most Violating Pair (MVP) strategy.
 
@@ -436,7 +436,7 @@ class SVMDecomposition(SVM):
         # Setup initial values
         self.alpha = np.zeros(self.y.shape)
         self._gradients = np.full(self.y.shape, fill_value=-1)
-        self.i = 0; m_a = 1; M_a = 0
+        self.i = 0; m_a = 1; M_a = -1
         
         fit_sol = {'x': []}
         
@@ -457,6 +457,7 @@ class SVMDecomposition(SVM):
             self.alpha[working_set] = np.ravel(fit_sol['x'])
             self.i += 1
         
+        self.diff_ma_Ma = np.round(m_a - M_a, decimals=6)
         self.w, self.bias = self._compute_params(alphas=self.alpha, tol=tol, fix_intercept=fix_intercept)
 
         
