@@ -41,6 +41,8 @@ def polynomial(x1, x2, gamma):
     return (1 + np.dot(x1, x2.T)) ** gamma
 
 
+<<<<<<< HEAD
+=======
 def encode(y, letters):
     """
     Encode the labels y in {-1, 1}.
@@ -113,6 +115,7 @@ def confusion_matrix(y_test, y_fit):
 # ########################################################
 
 
+>>>>>>> main
 class SVM():
     # class attribute
     kernel_functions = {'poly':polynomial, # convenient alias which matches the Sklearn API
@@ -188,6 +191,25 @@ class SVM():
 
         self.w, self.bias = self._compute_params(alphas=self.alpha, tol=tol, fix_intercept=fix_intercept)
 
+<<<<<<< HEAD
+    def m_M(self, atol=1e-4):
+        """
+        Method to compute the S and R sets for the general SVM algorithm. Used to evaluate m(alpha) and M(alpha)
+        """
+
+        R = (((self.alpha + atol < self.C) & (self.y ==  1)) | ((self.alpha - atol > 0) & (self.y == -1)))
+        S = (((self.alpha + atol < self.C) & (self.y == -1)) | ((self.alpha - atol > 0) & (self.y ==  1)))
+        
+        grad = self.alpha @ self.P - 1
+
+        grad_y = grad*self.y
+
+        m = np.max(-grad_y[R])
+        M = np.min(-grad_y[S])
+
+        return m, M
+=======
+>>>>>>> main
 
     def _compute_params(self, alphas, tol, fix_intercept=False):
         """
@@ -207,7 +229,10 @@ class SVM():
 
         return self.w, self.bias
 
+<<<<<<< HEAD
+=======
 
+>>>>>>> main
     def pred(self, X):
         """
         Perform prediction and if y is available return prediction metrics
@@ -478,6 +503,7 @@ class MultiSVM():
         self.gamma = gamma
         self.kernel = kernel
         self.df = df
+        self.iter = 0
 
     def fit(self, tol=1e-4, fix_intercept=False):
         """
@@ -492,6 +518,25 @@ class MultiSVM():
             X, y = process_df(self.df, letters_pair)
             self._classifiers[letters_pair] = SVM(X, y, self.C, self.gamma, self.kernel)
             self._classifiers[letters_pair].fit(tol, fix_intercept)
+            self.iter += self._classifiers[letters_pair].fit_sol['iterations']
+
+    def m_M(self):
+        """
+        In order to estimate the difference between m and M for the multiclass problem we take the maximum between all the 
+        classes (least optimal class)
+        """
+        m_ = []
+        M_ = []
+        for letters in itertools.combinations(self.classes, r=2):
+            m, M = self._classifiers[letters].m_M()
+            m_.append(m)
+            M_.append(M)
+
+        m_M = np.array(m_)-np.array(M_)
+
+        return np.max(m_M)
+
+
 
     def pred(self, X):
         """

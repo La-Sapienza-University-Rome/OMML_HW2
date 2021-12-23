@@ -53,7 +53,7 @@ fin_obj = 0.5*np.dot(np.dot(svm.alpha.T, svm.P),
                         svm.alpha) + np.dot(svm.q.T, svm.alpha)
 init_obj = 0.5*np.dot(np.dot(alpha_init.T, svm.P), 
                         alpha_init) + np.dot(svm.q.T, alpha_init)
-
+m, M = svm.m_M()
 
 print('C: ', C)
 print('gamma: ', gamma)
@@ -65,3 +65,4 @@ matrix = confusion_matrix(y_test, svm.pred(X_test)).ravel()
 print('Confusion Matrix: \n', matrix.reshape((2, 2)))
 print('Computational Time:', time, ' s')
 print('Number of optimizations:', num_it)
+print('Difference between m and M:', m-M)
