@@ -279,6 +279,92 @@ class SVMDecomposition(SVM):
         return solvers.qp(P, q, G, h, A, b)
 
 
+    def _get_di(self, di, dj, alphai, alphaj, c):
+        """
+        Retrieve the value for beta_var depending on the rules defined.
+
+        :param di: direction for i; Integer
+        :param dj: direction for j; Integer
+        :param alphai: alpha value for i; Float
+        :param alphaj: alpha value for j; Float
+        :param c: Penalty parameter of the error term; Float
+        
+        :return value of beta_bar
+        """   
+        if (di>0 and dj>0):
+            beta_bar = min(c - alphai, c - alphaj)
+        elif (di<0 and dj<0):
+            beta_bar = min(alphai, alphaj)
+        elif (di>0 and dj<0):
+            beta_bar = min(c - alphai, alphaj)
+        elif (di<0 and dj>0):
+            beta_bar = min(alphai, c - alphaj)
+        return 
+        
+    
+    def _solve_subproblem_analytical(self, working_set, working_set_size = 2):
+        """
+        Solve analitycally the subproblem w.r.t. the alphas in the working set.
+
+        :param working_set: indices of the working set; numpy.ndarray
+        :param working_set_size: even number equal to 2; called q in the homework/literature
+
+        :return solution object of the subproblem
+        """
+        
+        # Get indexes from the working data set
+        I = working_set[0]
+        J = working_set[1]
+        
+        # Get information with the indexes of the working data set
+        X_ws = self.X[[I,J],]
+        y_ws = self.y[[I,J]]
+        alpha_ws = self.alpha[[I,J]]
+        gradients_ws = self._gradients[[I,J]]
+        
+        # Generate Q (semidefinite positive) matrix 
+        Q_sub = np.dot((np.dot(np.diag(y_ws), rbf(X_ws, X_ws, self.gamma))), np.diag(y_ws))
+        
+        # Initialize direction and alpha_star result
+        di = np.zeros(working_set_size)
+        alpha_star = np.zeros(working_set_size)
+        
+        # Define directions
+        di[0] =   y_ws[0]
+        di[1] = - y_ws[1]
+        
+        # Define beta bar by the conditions given
+        beta_bar = self._get_di(di[0], di[1], self.alpha[I], self.alpha[J], self.C)
+        
+        # Evaluate 
+        if np.dot(gradients_ws.T, di) == 0: 
+            beta_star = 0
+        else:
+            if np.dot(gradients_ws.T, di) < 0:
+                d_star = di
+            else:
+                d_star = -di
+        
+        # Calculate the maximum allowable step beta_bar along d_star:
+        
+        # Define the value for beta_star
+        if beta_bar == 0:
+            beta_star = 0
+        elif np.dot(np.dot(d_star.T, Q_sub), d_star) == 0:
+            beta_star = beta_bar
+        else:
+            if np.dot(np.dot(d_star.T, Q_sub), d_star) > 0:
+                beta_nv = -np.dot(gradients_ws.T, d_star) / np.dot(np.dot(d_star.T, Q_sub), d_star)
+                beta_star = min(beta_bar, beta_nv)
+        
+        
+        # Calculate the solution
+        alpha_star[0] = alpha_ws[0] + (beta_star * d_star[0])
+        alpha_star[1] = alpha_ws[1] + (beta_star * d_star[1])
+        
+        return alpha_star
+
+
     def fit(self, working_set_size, max_iters=500, stop_thr=1e-5, tol=1e-4, fix_intercept=False):
         """
         Perform the optimization over the alpha values using the decomposition algorithm.
@@ -295,19 +381,29 @@ class SVMDecomposition(SVM):
         # Setup initial values
         self.alpha = np.zeros(self.y.shape)
         self._gradients = np.full(self.y.shape, fill_value=-1)
-        i = 0; m_a = 1; M_a = -1
-
+        self.i = 0; m_a = 1; M_a = 0
+        
+        fit_sol = {'x': []}
+        
         # Decomposition
-        while  (i < max_iters) and (m_a - M_a > stop_thr):
+        while  (self.i < max_iters) and (m_a - M_a > stop_thr):
             m_a, M_a, working_set = self._select_working_set(working_set_size, atol=tol)
-            fit_sol = self._solve_subproblem(working_set, working_set_size)
+            
+            if working_set_size == 2:
+                # Solve the problem by means of most violating pair (MVP)
+                fit_sol['x'] = self._solve_subproblem_analytical(working_set)
+                
+            else:
+                fit_sol = self._solve_subproblem(working_set, working_set_size)
+                
             step = (np.ravel(fit_sol['x']) - self.alpha[working_set])[:,np.newaxis]
             Q_ws = self._hessian_handler(working_set)
             self._gradients = self._gradients + np.squeeze(Q_ws @ step)
             self.alpha[working_set] = np.ravel(fit_sol['x'])
-            i += 1
+            self.i += 1
+        
         self.w, self.bias = self._compute_params(alphas=self.alpha, tol=tol, fix_intercept=fix_intercept)
-        print(f'Converged after {i} iterations')
+        print(f'Converged after {self.i} iterations')
 
         
 
