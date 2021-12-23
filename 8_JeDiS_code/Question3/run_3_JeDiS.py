@@ -66,8 +66,8 @@ e = np.ones((X.shape[0], 1))
 Q = np.dot((np.dot(np.diag(y), rbf(X, X, gamma))), np.diag(y))
 
 # Evaluate the objective function
-init_obj = 0.5*np.dot(np.dot(alpha_init.T,Q),alpha_init)-np.dot(e.T,alpha_init)
-fin_obj = 0.5*np.dot(np.dot(svm.alpha.T,Q),svm.alpha)-np.dot(e.T,svm.alpha)
+init_obj = 0.5 * np.dot(np.dot(alpha_init.T,Q),alpha_init)-np.dot(e.T,alpha_init)
+fin_obj = 0.5 * np.dot(np.dot(svm.alpha.T,Q),svm.alpha)-np.dot(e.T,svm.alpha)
 
 print('C: ', C)
 print('gamma: ', gamma)
