@@ -41,8 +41,6 @@ def polynomial(x1, x2, gamma):
     return (1 + np.dot(x1, x2.T)) ** gamma
 
 
-<<<<<<< HEAD
-=======
 def encode(y, letters):
     """
     Encode the labels y in {-1, 1}.
@@ -115,7 +113,6 @@ def confusion_matrix(y_test, y_fit):
 # ########################################################
 
 
->>>>>>> main
 class SVM():
     # class attribute
     kernel_functions = {'poly':polynomial, # convenient alias which matches the Sklearn API
@@ -191,7 +188,7 @@ class SVM():
 
         self.w, self.bias = self._compute_params(alphas=self.alpha, tol=tol, fix_intercept=fix_intercept)
 
-<<<<<<< HEAD
+
     def m_M(self, atol=1e-4):
         """
         Method to compute the S and R sets for the general SVM algorithm. Used to evaluate m(alpha) and M(alpha)
@@ -208,8 +205,6 @@ class SVM():
         M = np.min(-grad_y[S])
 
         return m, M
-=======
->>>>>>> main
 
     def _compute_params(self, alphas, tol, fix_intercept=False):
         """
@@ -229,10 +224,7 @@ class SVM():
 
         return self.w, self.bias
 
-<<<<<<< HEAD
-=======
 
->>>>>>> main
     def pred(self, X):
         """
         Perform prediction and if y is available return prediction metrics
