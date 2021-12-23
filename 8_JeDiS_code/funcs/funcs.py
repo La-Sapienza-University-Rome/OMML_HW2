@@ -301,7 +301,7 @@ class SVMDecomposition(SVM):
             beta_bar = min(c - alphai, alphaj)
         elif (di<0 and dj>0):
             beta_bar = min(alphai, c - alphaj)
-        return 
+        return beta_bar
         
     
     def _solve_subproblem_analytical(self, working_set, working_set_size = 2):
