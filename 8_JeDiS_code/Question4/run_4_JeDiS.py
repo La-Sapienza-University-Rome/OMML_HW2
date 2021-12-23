@@ -50,16 +50,15 @@ X_test, y_test = split_X_y(test_df)
 train_acc = multi_svm.eval(X_train, y_train)
 test_acc = multi_svm.eval(X_test, y_test)
 time = round((stop-start), 2)
-num_it = multi_svm.iter
+num_it = multi_svm.i
 
 print('C: ', C)
 print('gamma: ', gamma)
 print('kernel: ', kernel)
 print('Classification Rate on Training Set:', round(train_acc, 3)*100, '%')
 print('Classification Rate on Test Set:', round(test_acc, 3)*100, '%')
-#confusion_matrix(y_test=y_test, y_fit=svm.pred(X_test))
 matrix = confusion_matrix(y_test, multi_svm.pred(X_test)).ravel()
 print('Confusion Matrix: \n', matrix.reshape((3, 3)))
 print('Computational Time:', time, ' s')
 print('Number of optimizations:', num_it)
-print('Difference between m and M:', multi_svm.m_M())
+print('m(α) - M(α):', multi_svm.m_M())

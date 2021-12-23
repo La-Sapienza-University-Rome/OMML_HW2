@@ -187,8 +187,6 @@ class SVM():
         self.alpha = np.ravel(self.fit_sol['x'])
 
         self.w, self.bias = self._compute_params(alphas=self.alpha, tol=tol, fix_intercept=fix_intercept)
-
-
     def m_M(self, atol=1e-4):
         """
         Method to compute the S and R sets for the general SVM algorithm. Used to evaluate m(alpha) and M(alpha)
@@ -223,7 +221,6 @@ class SVM():
             self.bias /= np.sum(self.sv_idx)
 
         return self.w, self.bias
-
 
     def pred(self, X):
         """
@@ -458,7 +455,7 @@ class SVMDecomposition(SVM):
         fit_sol = {'x': []}
         
         # Decomposition
-        while  (self.i < max_iters) and (m_a - M_a > stop_thr):
+        while (self.i < max_iters) and (m_a - M_a > stop_thr):
             m_a, M_a, working_set = self._select_working_set(working_set_size, atol=tol)
             
             if working_set_size == 2:
@@ -495,7 +492,7 @@ class MultiSVM():
         self.gamma = gamma
         self.kernel = kernel
         self.df = df
-        self.iter = 0
+        self.i = 0
 
     def fit(self, tol=1e-4, fix_intercept=False):
         """
@@ -510,7 +507,7 @@ class MultiSVM():
             X, y = process_df(self.df, letters_pair)
             self._classifiers[letters_pair] = SVM(X, y, self.C, self.gamma, self.kernel)
             self._classifiers[letters_pair].fit(tol, fix_intercept)
-            self.iter += self._classifiers[letters_pair].fit_sol['iterations']
+            self.i += self._classifiers[letters_pair].fit_sol['iterations']
 
     def m_M(self):
         """
