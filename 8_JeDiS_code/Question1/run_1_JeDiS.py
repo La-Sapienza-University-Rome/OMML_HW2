@@ -48,7 +48,6 @@ train_acc = svm.eval(X, y)
 test_acc = svm.eval(X_test, y_test)
 time = round((stop-start), 2)
 num_it = svm.fit_sol['iterations']
-KKT = KKT_violations(svm.alpha, svm.y, svm.X, svm.w, svm.bias, svm.C)
 alpha_init = np.zeros(len(svm.alpha))
 fin_obj = 0.5*np.dot(np.dot(svm.alpha.T, svm.P), 
                         svm.alpha) + np.dot(svm.q.T, svm.alpha)

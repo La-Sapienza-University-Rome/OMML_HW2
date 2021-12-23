@@ -56,7 +56,6 @@ train_acc = svm.eval(X, y)
 test_acc = svm.eval(X_test, y_test)
 time = round((stop-start), 2)
 num_it = svm.i
-KKT = KKT_violations(svm.alpha, svm.y, svm.X, svm.w, svm.bias, svm.C)
 
 # Calculate initial and final values for the objective funtion
 alpha_init = np.zeros(len(svm.alpha))

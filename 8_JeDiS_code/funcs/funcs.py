@@ -7,6 +7,13 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 
 
+
+# ########################################################
+# #
+# #                    Functions 
+# #
+# ########################################################
+
 def rbf(x1, x2, gamma):
     """
     Compute the RBF function
@@ -34,31 +41,76 @@ def polynomial(x1, x2, gamma):
     return (1 + np.dot(x1, x2.T)) ** gamma
 
 
-def KKT_violations(alpha, y, X, w, bias, C):
+def encode(y, letters):
     """
+    Encode the labels y in {-1, 1}.
 
-    :param alpha: Vector
-    :param y: Vector
-    :param X: Matrix
-    :param w: Vector
-    :param bias: Float
-    :param C: Integer
-    :return: The number of KKT violations that this solutions incurs in
+    :param y: labels to encode
+    :param letters: list or tuple of length 2
+    
+    :return {-1, 1} encoding
     """
+    return np.where(y == letters[0], -1, 1)
 
-    # y(w*x_i+bias)
-    res = y * (np.dot(w, X.T) + bias)
-    # alpha = 0 --> res >= 1
-    idx1 = np.isclose(alpha, 0, atol=1e-2)
-    # alpha = C --> res <= 1
-    idx2 = np.isclose(alpha, C, atol=1e-2)
-    # 0 < alpha < C --> res = 1
-    idx3 = ~(idx1 + idx2)
-    num = sum(res[idx1] < 1)
-    num += sum(res[idx2] > 1)
-    num += sum(~np.isclose(res[idx3], 1, atol=1e-2))
 
-    return num
+def decode(y_pred, letters):
+    """
+    Decode the target values y_pred.
+
+    :param y_pred: target values in {-1, 1}
+    :param letters: class labels
+
+    :return decoded y
+    """
+    mapping = {n:l for l,n in zip(letters, (-1,1))}
+    return np.where(y_pred == -1, mapping[-1], mapping[1])
+
+
+def split_X_y(df):
+    """
+    Split the DataFrame into X and y.
+
+    :param df: DataFrame
+
+    :return X, y
+    """
+    X = df.drop(['letter'], axis=1).to_numpy(copy=True)
+    y = df['letter'].to_numpy(copy=True)
+    return X, y
+
+
+def process_df(df, letters):
+    """
+    Filter the rows belonging to the classes in letters and return processed X, y.
+
+    :param df: DataFrame
+    :param letters: class labels
+
+    :return X, y
+    """
+    mask = df.letter.isin(letters)
+    X, y = split_X_y(df[mask])
+    y = encode(y, letters)
+    return X, y
+
+
+def confusion_matrix(y_test, y_fit):
+    
+    mat = confusion_matrix(y_test, y_fit)
+    sns.heatmap(mat.T, square=True, annot=True, fmt='d', cbar=False, xticklabels=[class_A, class_B],
+                yticklabels=['class_A', 'class_B'])
+    plt.xlabel('true label')
+    plt.ylabel('predicted label')
+    plt.show()
+
+
+
+
+# ########################################################
+# #
+# #                    Classes 
+# #
+# ########################################################
 
 
 class SVM():
@@ -66,6 +118,7 @@ class SVM():
     kernel_functions = {'poly':polynomial, # convenient alias which matches the Sklearn API
                         'polynomial':polynomial,
                         'rbf':rbf}
+
 
     def __init__(self, X, y, C, gamma, kernel):
 
@@ -80,6 +133,7 @@ class SVM():
         except:
             raise NotImplementedError
 
+
     @property
     def state(self):
         """
@@ -89,6 +143,7 @@ class SVM():
                       'gamma':self.gamma,
                       'C':self.C}
         return state_dict
+
 
     def __generate_intermediate_variables(self):
         """
@@ -119,6 +174,7 @@ class SVM():
         self.A = matrix(self.y, (1, obs), 'd')
         self.b = matrix(np.zeros(1))
 
+
     def fit(self, tol=1e-4, fix_intercept=False):
         """
         This method performs the optimization over the alpha values using cvxopt
@@ -132,6 +188,7 @@ class SVM():
 
         self.w, self.bias = self._compute_params(alphas=self.alpha, tol=tol, fix_intercept=fix_intercept)
 
+
     def _compute_params(self, alphas, tol, fix_intercept=False):
         """
         This method returns a set of parameters estimated based on the previous fit
@@ -144,18 +201,13 @@ class SVM():
 
         self.bias = 0
         if not fix_intercept:
-        #     for i in range(np.sum(self.sv_idx)):
-        #         self.bias += self.y[self.sv_idx][i] - np.sum(
-        #             self.y[self.sv_idx] * alphas[self.sv_idx] * self.K[self.idx[i], self.sv_idx])
-
-        #     self.bias = self.bias / np.sum(self.sv_idx)
             self.bias = np.sum(self.y[self.sv_idx] - np.sum(
                 self.y[self.sv_idx] * alphas[self.sv_idx] * self.K[np.ix_(self.sv_idx, self.sv_idx)], axis=1))
             self.bias /= np.sum(self.sv_idx)
 
         return self.w, self.bias
 
-    # TODO: Improve this part a lot...
+
     def pred(self, X):
         """
         Perform prediction and if y is available return prediction metrics
@@ -166,6 +218,7 @@ class SVM():
                             axis=1) + self.bias
         y_pred = np.sign(prediction)
         return y_pred
+
 
     def eval(self, X, y):
         """
@@ -408,60 +461,6 @@ class SVMDecomposition(SVM):
 
         
 
-
-def encode(y, letters):
-    """
-    Encode the labels y in {-1, 1}.
-
-    :param y: labels to encode
-    :param letters: list or tuple of length 2
-    
-    :return {-1, 1} encoding
-    """
-    return np.where(y == letters[0], -1, 1)
-
-
-def decode(y_pred, letters):
-    """
-    Decode the target values y_pred.
-
-    :param y_pred: target values in {-1, 1}
-    :param letters: class labels
-
-    :return decoded y
-    """
-    mapping = {n:l for l,n in zip(letters, (-1,1))}
-    return np.where(y_pred == -1, mapping[-1], mapping[1])
-
-
-def split_X_y(df):
-    """
-    Split the DataFrame into X and y.
-
-    :param df: DataFrame
-
-    :return X, y
-    """
-    X = df.drop(['letter'], axis=1).to_numpy(copy=True)
-    y = df['letter'].to_numpy(copy=True)
-    return X, y
-
-
-def process_df(df, letters):
-    """
-    Filter the rows belonging to the classes in letters and return processed X, y.
-
-    :param df: DataFrame
-    :param letters: class labels
-
-    :return X, y
-    """
-    mask = df.letter.isin(letters)
-    X, y = split_X_y(df[mask])
-    y = encode(y, letters)
-    return X, y
-
-
 class MultiSVM():
 
     def __init__(self, df,  C, gamma, kernel):
@@ -521,13 +520,3 @@ class MultiSVM():
         """
         y_pred = self.pred(X)
         return np.sum(y_pred == y) / len(y)
-
-
-def confusion_matrix(y_test, y_fit):
-    
-    mat = confusion_matrix(y_test, y_fit)
-    sns.heatmap(mat.T, square=True, annot=True, fmt='d', cbar=False, xticklabels=[class_A, class_B],
-                yticklabels=['class_A', 'class_B'])
-    plt.xlabel('true label')
-    plt.ylabel('predicted label')
-    plt.show()
