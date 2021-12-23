@@ -3,6 +3,8 @@ from cvxopt import matrix, solvers
 import itertools
 from  collections import Counter
 from functools import lru_cache
+import seaborn as sns
+import matplotlib.pyplot as plt
 
 
 def rbf(x1, x2, gamma):
@@ -203,34 +205,26 @@ class SVMDecomposition(SVM):
 
         return self.w, self.bias
 
-    
-    def _update_ws_age(self, working_set):
-        """
-        """
-        ws_mask = np.full(self.alpha.shape, fill_value=False)
-        ws_mask[working_set] = True
-        self._ws_age[ws_mask] += -1
 
-
-    def _select_working_set(self, q, atol=1e-3, M=10):
+    def _select_working_set(self, q, atol=1e-4):
         """
         Select the working set according to the Most Violating Pair (MVP) strategy.
 
         :param q: cardinality of the working set
+        :param atol: absolute tolerance for the inequalities
 
         :return m_a: max {-y[I] * ∇f[I]}
                 M_a: min {-y[J] * ∇f[J]}
                 working_set: set of indices; numpy.ndarray
         """
-        R = (((self.alpha < self.C) & (self.y == 1)) | ((self.alpha > 0) & (self.y == -1))) & (self._ws_age > 0)
-        S = (((self.alpha < self.C) & (self.y == -1)) | ((self.alpha > 0) & (self.y == 1))) & (self._ws_age > 0)
+        R = (((self.alpha + atol < self.C) & (self.y ==  1)) | ((self.alpha - atol > 0) & (self.y == -1)))
+        S = (((self.alpha + atol < self.C) & (self.y == -1)) | ((self.alpha - atol > 0) & (self.y ==  1)))
         int_idx = np.argsort( -self.y * self._gradients ) # sort the array
         I = int_idx[R[int_idx]][-q//2:][::-1] # argmax
         J = int_idx[S[int_idx]][:q//2] # argmin
         m_a = -self.y[I[0]] * self._gradients[I[0]] # max i
         M_a = -self.y[J[0]] * self._gradients[J[0]] # min j
         working_set = np.concatenate( (I, J) )
-        self._update_ws_age(working_set)
         return m_a, M_a, working_set
 
 
@@ -279,15 +273,101 @@ class SVMDecomposition(SVM):
         ws_mask[working_set] = False # get the mask for the complement set of the working set
         Q = self._hessian_handler(working_set)
         P = matrix(Q[working_set,:]) # select the ij rows of the ij columns of the hessian
-        q = matrix(np.squeeze(self.alpha[np.newaxis,ws_mask] @ Q[ws_mask,:] - np.ones(working_set_size)))
-        G = matrix(np.vstack((np.diag(np.ones(working_set_size) * -1), np.identity(working_set_size))))
-        h = matrix(np.hstack((np.zeros(working_set_size), np.ones(working_set_size) * self.C)))
+        q = matrix(np.squeeze(self.alpha[ws_mask][np.newaxis,:] @ Q[ws_mask,:]) -1, (working_set_size, 1), 'd') 
+        G = matrix(np.vstack( ( np.diag(np.full(working_set_size, fill_value=-1)), np.identity(working_set_size) ) ))
+        h = matrix(np.hstack( ( np.zeros(working_set_size), np.full(working_set_size, fill_value=self.C) ) ))
         A = matrix(self.y[working_set], (1, working_set_size), 'd')
         b = matrix(-self.y[ws_mask][np.newaxis,:] @ self.alpha[ws_mask][:, np.newaxis])
         return solvers.qp(P, q, G, h, A, b)
 
 
-    def fit(self, working_set_size, max_iters=500, stop_thr=1e-5, M=10, tol=1e-4, fix_intercept=False):
+    def _get_di(self, di, dj, alphai, alphaj, c):
+        """
+        Retrieve the value for beta_var depending on the rules defined.
+
+        :param di: direction for i; Integer
+        :param dj: direction for j; Integer
+        :param alphai: alpha value for i; Float
+        :param alphaj: alpha value for j; Float
+        :param c: Penalty parameter of the error term; Float
+        
+        :return value of beta_bar
+        """   
+        if (di>0 and dj>0):
+            beta_bar = min(c - alphai, c - alphaj)
+        elif (di<0 and dj<0):
+            beta_bar = min(alphai, alphaj)
+        elif (di>0 and dj<0):
+            beta_bar = min(c - alphai, alphaj)
+        elif (di<0 and dj>0):
+            beta_bar = min(alphai, c - alphaj)
+        return 
+        
+    
+    def _solve_subproblem_analytical(self, working_set, working_set_size = 2):
+        """
+        Solve analitycally the subproblem w.r.t. the alphas in the working set.
+
+        :param working_set: indices of the working set; numpy.ndarray
+        :param working_set_size: even number equal to 2; called q in the homework/literature
+
+        :return solution object of the subproblem
+        """
+        
+        # Get indexes from the working data set
+        I = working_set[0]
+        J = working_set[1]
+        
+        # Get information with the indexes of the working data set
+        X_ws = self.X[[I,J],]
+        y_ws = self.y[[I,J]]
+        alpha_ws = self.alpha[[I,J]]
+        gradients_ws = self._gradients[[I,J]]
+        
+        # Generate Q (semidefinite positive) matrix 
+        Q_sub = np.dot((np.dot(np.diag(y_ws), rbf(X_ws, X_ws, self.gamma))), np.diag(y_ws))
+        
+        # Initialize direction and alpha_star result
+        di = np.zeros(working_set_size)
+        alpha_star = np.zeros(working_set_size)
+        
+        # Define directions
+        di[0] =   y_ws[0]
+        di[1] = - y_ws[1]
+        
+        # Define beta bar by the conditions given
+        beta_bar = self._get_di(di[0], di[1], self.alpha[I], self.alpha[J], self.C)
+        
+        # Evaluate 
+        if np.dot(gradients_ws.T, di) == 0: 
+            beta_star = 0
+        else:
+            if np.dot(gradients_ws.T, di) < 0:
+                d_star = di
+            else:
+                d_star = -di
+        
+        # Calculate the maximum allowable step beta_bar along d_star:
+        
+        # Define the value for beta_star
+        if beta_bar == 0:
+            beta_star = 0
+        elif np.dot(np.dot(d_star.T, Q_sub), d_star) == 0:
+            beta_star = beta_bar
+        else:
+            if np.dot(np.dot(d_star.T, Q_sub), d_star) > 0:
+                beta_nv = -np.dot(gradients_ws.T, d_star) / np.dot(np.dot(d_star.T, Q_sub), d_star)
+                beta_star = min(beta_bar, beta_nv)
+        
+        
+        # Calculate the solution
+        alpha_star[0] = alpha_ws[0] + (beta_star * d_star[0])
+        alpha_star[1] = alpha_ws[1] + (beta_star * d_star[1])
+        
+        return alpha_star
+
+
+    def fit(self, working_set_size, max_iters=500, stop_thr=1e-5, tol=1e-4, fix_intercept=False):
         """
         Perform the optimization over the alpha values using the decomposition algorithm.
 
@@ -295,7 +375,7 @@ class SVMDecomposition(SVM):
         :param max_iters: stop the optimization loop after a certain number of iterations
         :param stop_thr: tolerance threshold for the stopping criterion m(a) - M(a) > stop_thr
         :param M: 
-        :param tol: tolerance for computing the support vectors
+        :param tol: tolerance for computing the comparison between floating-point numbers
         :param fix_intercept: whether fix the intercept to 0 or not
 
         :rerturn (no return value)  
@@ -303,20 +383,28 @@ class SVMDecomposition(SVM):
         # Setup initial values
         self.alpha = np.zeros(self.y.shape)
         self._gradients = np.full(self.y.shape, fill_value=-1)
-        self._ws_age = np.full(self.y.shape, fill_value=M)
-        i = 0; m_a = 1; M_a = 0
-
+        self.i = 0; m_a = 1; M_a = 0
+        
+        fit_sol = {'x': []}
+        
         # Decomposition
-        while  (i < max_iters) and (m_a - M_a > stop_thr):
-            m_a, M_a, working_set = self._select_working_set(working_set_size)
-            fit_sol = self._solve_subproblem(working_set, working_set_size)
+        while  (self.i < max_iters) and (m_a - M_a > stop_thr):
+            m_a, M_a, working_set = self._select_working_set(working_set_size, atol=tol)
+            
+            if working_set_size == 2:
+                # Solve the problem by means of most violating pair (MVP)
+                fit_sol['x'] = self._solve_subproblem_analytical(working_set)
+                
+            else:
+                fit_sol = self._solve_subproblem(working_set, working_set_size)
+                
             step = (np.ravel(fit_sol['x']) - self.alpha[working_set])[:,np.newaxis]
             Q_ws = self._hessian_handler(working_set)
             self._gradients = self._gradients + np.squeeze(Q_ws @ step)
             self.alpha[working_set] = np.ravel(fit_sol['x'])
-            i += 1
+            self.i += 1
+        
         self.w, self.bias = self._compute_params(alphas=self.alpha, tol=tol, fix_intercept=fix_intercept)
-        print(f'Converged after {i} iterations')
 
         
 
@@ -400,12 +488,10 @@ class MultiSVM():
         :param fix_intercept: same as SVM()
         """
         self._classifiers = {}
-        self.iter = 0
         for letters_pair in itertools.combinations(self.classes, r=2):
             X, y = process_df(self.df, letters_pair)
             self._classifiers[letters_pair] = SVM(X, y, self.C, self.gamma, self.kernel)
             self._classifiers[letters_pair].fit(tol, fix_intercept)
-            self.iter += self._classifiers[letters_pair].fit_sol['iterations']
 
     def pred(self, X):
         """
@@ -441,7 +527,7 @@ def confusion_matrix(y_test, y_fit):
     
     mat = confusion_matrix(y_test, y_fit)
     sns.heatmap(mat.T, square=True, annot=True, fmt='d', cbar=False, xticklabels=[class_A, class_B],
-                yticklabels=[class_A, class_B])
+                yticklabels=['class_A', 'class_B'])
     plt.xlabel('true label')
     plt.ylabel('predicted label')
     plt.show()

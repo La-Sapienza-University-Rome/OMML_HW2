@@ -3,6 +3,8 @@ from cvxopt import matrix, solvers
 import itertools
 from  collections import Counter
 from functools import lru_cache
+import seaborn as sns
+import matplotlib.pyplot as plt
 
 
 def rbf(x1, x2, gamma):
@@ -403,7 +405,6 @@ class SVMDecomposition(SVM):
             self.i += 1
         
         self.w, self.bias = self._compute_params(alphas=self.alpha, tol=tol, fix_intercept=fix_intercept)
-        print(f'Converged after {self.i} iterations')
 
         
 
@@ -526,7 +527,7 @@ def confusion_matrix(y_test, y_fit):
     
     mat = confusion_matrix(y_test, y_fit)
     sns.heatmap(mat.T, square=True, annot=True, fmt='d', cbar=False, xticklabels=[class_A, class_B],
-                yticklabels=[class_A, class_B])
+                yticklabels=['class_A', 'class_B'])
     plt.xlabel('true label')
     plt.ylabel('predicted label')
     plt.show()
