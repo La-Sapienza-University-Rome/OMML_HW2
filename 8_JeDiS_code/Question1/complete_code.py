@@ -143,6 +143,7 @@ for t in itertools.product(*iterables):
         best_time = round((stop-start), 2)
         num_it = svm.fit_sol['iterations']
         min_acc = val_loss
+        KKT = svm.fit_sol['status']
         alpha_init = np.zeros(len(svm.alpha))
         fin_obj = 0.5*np.dot(np.dot(svm.alpha.T, svm.P), 
                              svm.alpha) + np.dot(svm.q.T, svm.alpha)
